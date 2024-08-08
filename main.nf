@@ -24,7 +24,7 @@ workflow {
   ch_primer_scheme_name = Channel.of(params.primer_scheme_name)
   ch_ncov_tools_version = Channel.of(params.ncov_tools_version)
   ch_run_name = Channel.of(params.run_name)
-  ch_artic_analysis_dir = Channel.fromPath(params.artic_analysis_dir, type: 'dir')
+  ch_samplesheet = Channel.fromPath(params.samplesheet, type: 'file')
   ch_metadata = Channel.fromPath(params.metadata, type: 'file')
 
   update_pangolin(Channel.value(params.update_pangolin))
@@ -32,26 +32,12 @@ workflow {
   download_artic_ncov2019(ch_primer_scheme_version.combine(ch_primer_scheme_name))
   index_reference_genome(download_artic_ncov2019.out)
 
-  if (params.no_split_by_plate) {
-    ch_library_plate_ids = Channel.of(null)    
-  } else {
-    ch_library_plate_ids = get_library_plate_ids(ch_artic_analysis_dir).splitText().map{ it -> it.trim() }
-  }
-
-  prepare_data_root(ch_artic_analysis_dir.combine(download_artic_ncov2019.out).combine(ch_metadata).combine(ch_library_plate_ids))
+  prepare_data_root(ch_artic_analysis_dir.combine(download_artic_ncov2019.out).combine(ch_metadata))
   
   create_sample_id_list(prepare_data_root.out)
   find_negative_control(prepare_data_root.out)
-  create_config_yaml(ch_library_plate_ids.join(find_negative_control.out).combine(ch_metadata))
+  create_config_yaml(find_negative_control.out.combine(ch_metadata))
 
   ncov_tools(create_config_yaml.out.join(prepare_data_root.out).combine(index_reference_genome.out).combine(download_ncov_tools.out).combine(update_pangolin.out))
-
-  if (!params.no_split_by_plate) {
-    combine_all_qc_summaries_for_run(ncov_tools.out.qc_reports.collect())
-    combine_all_lineage_reports_for_run(ncov_tools.out.lineage_report.collect())
-    get_pangolin_version_for_run(ncov_tools.out.pangolin_version.first())
-    combine_all_mixture_reports_for_run(ncov_tools.out.qc_reports.collect())
-    combine_ambiguous_position_reports_for_run(ncov_tools.out.qc_reports.collect())
-  }
 
 }
